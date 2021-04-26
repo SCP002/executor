@@ -65,7 +65,9 @@ func Start(opts Options) Result {
 				}
 				outSb.WriteString(char)
 				// Callbacks:
-				opts.OnChar(char)
+				if opts.OnChar != nil {
+					opts.OnChar(char)
+				}
 			}
 		}()
 	}
