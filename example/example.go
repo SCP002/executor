@@ -1,8 +1,10 @@
-package executor
+package main
 
 import (
 	"fmt"
 	"strings"
+
+	"github.com/SCP002/executor"
 )
 
 func main() {
