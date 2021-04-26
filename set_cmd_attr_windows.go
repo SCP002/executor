@@ -5,6 +5,8 @@ package executor
 import (
 	"os/exec"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 // setCmdAttr sets OS specific process attributes
@@ -12,7 +14,7 @@ func setCmdAttr(cmd *exec.Cmd, newConsole bool, hide bool) {
 	attr := syscall.SysProcAttr{}
 
 	if newConsole {
-		attr.CreationFlags |= 0x00000010 // CREATE_NEW_CONSOLE
+		attr.CreationFlags |= windows.CREATE_NEW_CONSOLE
 		attr.NoInheritHandles = true
 	}
 
