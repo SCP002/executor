@@ -1,0 +1,12 @@
+# Ignore everything
+/*
+
+# Not these files
+!/.gitattributes
+!/.gitignore
+!/*.cmd
+!/*.go
+!/go.mod
+!/go.sum
+!/LICENSE
+!/README.md
