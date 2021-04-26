@@ -9,10 +9,10 @@ import (
 
 func main() {
 	opts := executor.Options{
-		Command:    "sample-executable.cmd",
-		Args:       []string{"arg1"},
-		Wait:       true,
-		NewConsole: false,
+		Command: "sample-executable.cmd",
+		Args:    []string{"arg1"},
+		Wait:    true,
+		Print:   true,
 	}
 
 	res := executor.Start(opts)

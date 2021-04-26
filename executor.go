@@ -12,6 +12,7 @@ import (
 type Options struct {
 	Command    string
 	Args       []string
+	Print      bool
 	Wait       bool
 	NewConsole bool
 	Hide       bool
@@ -58,7 +59,9 @@ func Start(opts Options) Result {
 		go func() {
 			for stdoutScanner.Scan() {
 				char := stdoutScanner.Text()
-				fmt.Print(char)
+				if opts.Print {
+					fmt.Print(char)
+				}
 				outSb.WriteString(char)
 			}
 		}()
