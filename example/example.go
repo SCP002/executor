@@ -11,8 +11,8 @@ func main() {
 	opts := executor.Options{
 		Command:    "sample-executable.cmd",
 		Args:       []string{"arg1"},
-		Wait:       false,
-		NewConsole: true,
+		Wait:       true,
+		NewConsole: false,
 	}
 
 	res := executor.Start(opts)
