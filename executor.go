@@ -16,6 +16,7 @@ type Options struct {
 	Wait       bool
 	NewConsole bool
 	Hide       bool
+	OnChar     func(c string)
 }
 
 // Result respresents process run result
@@ -63,6 +64,8 @@ func Start(opts Options) Result {
 					fmt.Print(char)
 				}
 				outSb.WriteString(char)
+				// Callbacks:
+				opts.OnChar(char)
 			}
 		}()
 	}
