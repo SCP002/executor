@@ -17,6 +17,7 @@ type Options struct {
 	NewConsole bool
 	Hide       bool
 	OnChar     func(c string)
+	OnLine     func(l string)
 }
 
 // Result respresents process run result
@@ -56,6 +57,7 @@ func Start(opts Options) Result {
 
 		stdoutScanner := bufio.NewScanner(stdoutReader)
 		stdoutScanner.Split(bufio.ScanRunes)
+		var lineSb strings.Builder
 
 		go func() {
 			for stdoutScanner.Scan() {
@@ -64,9 +66,19 @@ func Start(opts Options) Result {
 					fmt.Print(char)
 				}
 				outSb.WriteString(char)
-				// Callbacks:
+				// Char callback:
 				if opts.OnChar != nil {
 					opts.OnChar(char)
+				}
+				// Build the line:
+				if opts.OnLine != nil {
+					if char != "\n" {
+						lineSb.WriteString(char)
+					} else {
+						// Line callback:
+						opts.OnLine(lineSb.String())
+						lineSb.Reset()
+					}
 				}
 			}
 		}()
