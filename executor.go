@@ -48,17 +48,19 @@ func Start(opts Options) Result {
 	} else { // Can capture output...
 		stdoutReader, err := cmd.StdoutPipe()
 
-		cmd.Stderr = cmd.Stdout
-
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return res
 		}
 
+		// Redirect StdErr to StdOut:
+		cmd.Stderr = cmd.Stdout
+
 		stdoutScanner := bufio.NewScanner(stdoutReader)
 		stdoutScanner.Split(bufio.ScanRunes)
 		var lineSb strings.Builder
 
+		// Scan output:
 		go func() {
 			for stdoutScanner.Scan() {
 				char := stdoutScanner.Text()
