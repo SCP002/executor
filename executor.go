@@ -13,6 +13,7 @@ type Options struct {
 	Command    string
 	Args       []string
 	Print      bool
+	Capture    bool
 	Wait       bool
 	NewConsole bool
 	Hide       bool
@@ -67,7 +68,9 @@ func Start(opts Options) Result {
 				if opts.Print {
 					fmt.Print(char)
 				}
-				outSb.WriteString(char)
+				if opts.Capture {
+					outSb.WriteString(char)
+				}
 				// Char callback:
 				if opts.OnChar != nil {
 					opts.OnChar(char)

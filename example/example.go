@@ -13,6 +13,7 @@ func main() {
 		Args:    []string{"arg1"},
 		Wait:    true,
 		Print:   true,
+		Capture: true,
 	}
 
 	res := executor.Start(opts)
