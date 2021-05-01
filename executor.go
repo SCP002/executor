@@ -17,8 +17,8 @@ type Options struct {
 	Wait       bool
 	NewConsole bool
 	Hide       bool
-	OnChar     func(c string)
-	OnLine     func(l string)
+	OnChar     func(c string, p *os.Process)
+	OnLine     func(l string, p *os.Process)
 }
 
 // Result respresents process run result
@@ -73,7 +73,7 @@ func Start(opts Options) Result {
 				}
 				// Char callback:
 				if opts.OnChar != nil {
-					opts.OnChar(char)
+					opts.OnChar(char, cmd.Process)
 				}
 				// Build the line:
 				if opts.OnLine != nil {
@@ -81,7 +81,7 @@ func Start(opts Options) Result {
 						lineSb.WriteString(char)
 					} else {
 						// Line callback:
-						opts.OnLine(lineSb.String())
+						opts.OnLine(lineSb.String(), cmd.Process)
 						lineSb.Reset()
 					}
 				}
