@@ -77,7 +77,7 @@ func Start(opts Options) Result {
 				}
 				// Build the line:
 				if opts.OnLine != nil {
-					if char != "\n" {
+					if char != "\n" && char != "\r" {
 						lineSb.WriteString(char)
 					} else {
 						// Line callback:
