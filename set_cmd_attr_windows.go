@@ -15,7 +15,7 @@ func setCmdAttr(cmd *exec.Cmd, newConsole bool, hide bool) {
 
 	if newConsole {
 		attr.CreationFlags |= windows.CREATE_NEW_CONSOLE
-		// Fix new window hanging out on user input:
+		// Fix new window hanging out on user input
 		attr.NoInheritHandles = true
 	}
 
