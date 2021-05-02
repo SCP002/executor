@@ -27,9 +27,10 @@ type Options struct {
 
 // Result respresents process run result
 type Result struct {
-	Success  bool
-	ExitCode int
-	Output   string
+	DoneOk   bool   // Process exited successfully?
+	StartOk  bool   // Process started successfully?
+	ExitCode int    // Exit code
+	Output   string // Output of StdOut and StdErr
 }
 
 // Start starts a process
@@ -110,6 +111,7 @@ func Start(opts Options) Result {
 		fmt.Fprintln(os.Stderr, err)
 		return res
 	}
+	res.StartOk = true
 
 	// Wait for the command to finish execution
 	if opts.Wait {
@@ -124,8 +126,10 @@ func Start(opts Options) Result {
 	}
 
 	// Build and return Result
-	res.Success = cmd.ProcessState.Success()
-	res.ExitCode = cmd.ProcessState.ExitCode()
+	if cmd.ProcessState != nil {
+		res.DoneOk = cmd.ProcessState.Success()
+		res.ExitCode = cmd.ProcessState.ExitCode()
+	}
 	res.Output = outSb.String()
 
 	return res
