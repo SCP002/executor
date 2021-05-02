@@ -18,6 +18,7 @@ type Options struct {
 	Capture    bool                          // Build buffer and capture output into Result.Output?
 	Wait       bool                          // Wait for program to finish?
 	Timeout    uint                          // Time in seconds allotted for the execution of the process before it get killed
+	Dir        string                        // Working directory
 	NewConsole bool                          // Spawn new console window on Windows?
 	Hide       bool                          // Try to hide process window on Windows?
 	OnChar     func(c string, p *os.Process) // Callback for each character from process StdOut and StdErr
@@ -51,6 +52,7 @@ func Start(opts Options) Result {
 	// Create command
 	cmd := exec.CommandContext(ctx, opts.Command, opts.Args...)
 
+	cmd.Dir = opts.Dir
 	// Fix "ERROR: Input redirection is not supported, exiting the process immediately" on Windows
 	cmd.Stdin = os.Stdin
 
