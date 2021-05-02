@@ -2,10 +2,12 @@ package executor
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // Options respresents options to start process
@@ -15,6 +17,7 @@ type Options struct {
 	Print      bool
 	Capture    bool
 	Wait       bool
+	Timeout    uint
 	NewConsole bool
 	Hide       bool
 	OnChar     func(c string, p *os.Process)
@@ -36,7 +39,14 @@ func Start(opts Options) Result {
 	var outSb strings.Builder
 	var err error
 
-	cmd := exec.Command(opts.Command, opts.Args...)
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	if opts.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(opts.Timeout)*time.Second)
+		defer cancel()
+	}
+
+	cmd := exec.CommandContext(ctx, opts.Command, opts.Args...)
 
 	// Fix "ERROR: Input redirection is not supported, exiting the process immediately" on Windows:
 	cmd.Stdin = os.Stdin
@@ -98,7 +108,10 @@ func Start(opts Options) Result {
 	if opts.Wait {
 		err = cmd.Wait()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintf(os.Stderr, "\n%v\n", err)
+			if ctx.Err() != nil {
+				fmt.Fprintln(os.Stderr, ctx.Err())
+			}
 			return res
 		}
 	}
