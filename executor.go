@@ -26,6 +26,7 @@ type Options struct {
 
 // Result respresents process run result
 type Result struct {
+	Success  bool
 	ExitCode int
 	Output   string
 }
@@ -121,6 +122,7 @@ func Start(opts Options) Result {
 	}
 
 	// Build and return Result
+	res.Success = cmd.ProcessState.Success()
 	res.ExitCode = cmd.ProcessState.ExitCode()
 	res.Output = outSb.String()
 
