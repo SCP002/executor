@@ -9,7 +9,7 @@ import (
 
 func main() {
 	opts := executor.Options{
-		Command: "sample-executable.cmd",
+		Command: "..\\..\\assets\\sample-executable.cmd",
 		Args:    []string{"arg1"},
 		Wait:    true,
 		Print:   true,
