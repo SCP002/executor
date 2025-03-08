@@ -22,5 +22,5 @@ func main() {
 	fmt.Print(res.Output)
 
 	fmt.Println("Press <Enter> to exit...")
-	fmt.Scanln()
+	_, _ = fmt.Scanln()
 }
