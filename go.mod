@@ -1,5 +1,5 @@
 module github.com/SCP002/executor
 
-go 1.16
+go 1.24.0
 
-require golang.org/x/sys v0.0.0-20210511113859-b0526f3d8744
+require golang.org/x/sys v0.31.0
