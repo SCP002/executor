@@ -1,5 +1,5 @@
 @Echo Off
-ChCp 65001 >Nul
+ChCp 65001 > Nul
 
 Echo 0 (stdout) ...
 
@@ -18,8 +18,8 @@ Echo 7 (stderr) ... 1>&2
 Echo 8 (stdout) ...
 Echo 9 (stderr) ... 1>&2
 
-Echo %CD%
-Echo Arg: %1
+Echo Current directory: %CD%
+Echo Argument 1: %1
 
 Pause
 Exit /B 0

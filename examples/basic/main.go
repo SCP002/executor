@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	// "os"
 	"strings"
 
 	"github.com/SCP002/executor"
@@ -9,18 +10,21 @@ import (
 
 func main() {
 	opts := executor.Options{
-		Command: "..\\..\\assets\\sample-executable.cmd",
+		Command: ".\\sample-executable.cmd",
 		Args:    []string{"arg1"},
 		Wait:    true,
 		Print:   true,
 		Capture: true,
+		// OnChar: func(c string, p *os.Process) {
+		// 	fmt.Print(c)
+		// },
 	}
 
-	res := executor.Start(opts)
+	res, err := executor.Start(opts)
+	if err != nil {
+		panic(err)
+	}
 
-	fmt.Println(strings.Repeat("-", 30))
+	fmt.Println(strings.Repeat("-", 50))
 	fmt.Print(res.Output)
-
-	fmt.Println("Press <Enter> to exit...")
-	_, _ = fmt.Scanln()
 }

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Options respresents options to start process
+// Options respresents options to start process.
 type Options struct {
 	Command    string                        // Command to run
 	Args       []string                      // Command arguments
@@ -25,7 +25,7 @@ type Options struct {
 	OnLine     func(l string, p *os.Process) // Callback for each line from process StdOut and StdErr
 }
 
-// Result respresents process run result
+// Result respresents process run result.
 type Result struct {
 	DoneOk   bool   // Process exited successfully?
 	StartOk  bool   // Process started successfully?
@@ -33,29 +33,24 @@ type Result struct {
 	Output   string // Output of StdOut and StdErr
 }
 
-// Start starts a process
-func Start(opts Options) Result {
+// Start starts a process with options `opts`.
+func Start(opts Options) (Result, error) {
 	res := Result{
 		ExitCode: -1,
 	}
 
-	var outSb strings.Builder
-	var err error
-
-	// Create context for command (empty or with timeout)
 	ctx := context.Background()
-	var cancel context.CancelFunc
 	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(opts.Timeout)*time.Second)
 		defer cancel()
 	}
 
-	// Create command
 	cmd := exec.CommandContext(ctx, opts.Command, opts.Args...)
-
 	cmd.Dir = opts.Dir
-	// Fix "ERROR: Input redirection is not supported, exiting the process immediately" on Windows
-	cmd.Stdin = os.Stdin
+	cmd.Stdin = os.Stdin // Fix "ERROR: Input redirection is not supported, exiting the process immediately" on Windows
+
+	var outSb strings.Builder
 
 	if opts.NewConsole || opts.Hide {
 		setCmdAttr(cmd, opts.NewConsole, opts.Hide)
@@ -64,73 +59,55 @@ func Start(opts Options) Result {
 		cmd.Stdout = os.Stdout
 	} else { // Can capture output
 		stdoutReader, err := cmd.StdoutPipe()
-
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return res
+			return res, fmt.Errorf("Create stdout pipe: %w", err)
 		}
-
-		// Redirect StdErr to StdOut
-		cmd.Stderr = cmd.Stdout
-
+		cmd.Stderr = cmd.Stdout // Redirect StdErr to StdOut
 		stdoutScanner := bufio.NewScanner(stdoutReader)
 		stdoutScanner.Split(bufio.ScanRunes)
-		var lineSb strings.Builder
 
-		// Scan output
-		go func() {
-			for stdoutScanner.Scan() {
-				char := stdoutScanner.Text()
+		scan := func(scanner *bufio.Scanner) {
+			var lineSb strings.Builder
+			for scanner.Scan() {
+				char := scanner.Text()
 				if opts.Print {
 					fmt.Print(char)
 				}
 				if opts.Capture {
 					outSb.WriteString(char)
 				}
-				// Char callback
 				if opts.OnChar != nil {
 					opts.OnChar(char, cmd.Process)
 				}
-				// Build the line
 				if opts.OnLine != nil {
-					if char != "\n" && char != "\r" {
-						lineSb.WriteString(char)
-					} else {
-						// Line callback
+					if char == "\n" || char == "\r" {
 						opts.OnLine(lineSb.String(), cmd.Process)
 						lineSb.Reset()
+					} else {
+						lineSb.WriteString(char)
 					}
 				}
 			}
-		}()
+		}
+		go scan(stdoutScanner)
 	}
 
-	// Start the command
-	err = cmd.Start()
+	err := cmd.Start()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return res
+		return res, fmt.Errorf("Start process: %w", err)
 	}
 	res.StartOk = true
 
-	// Wait for the command to finish execution
 	if opts.Wait {
-		err = cmd.Wait()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "\n%v\n", err)
-			if ctx.Err() != nil {
-				fmt.Fprintln(os.Stderr, ctx.Err())
-			}
-			return res
+		if err = cmd.Wait(); err != nil {
+			return res, fmt.Errorf("Wait for process: %w", err)
 		}
 	}
-
-	// Build and return Result
 	if cmd.ProcessState != nil {
 		res.DoneOk = cmd.ProcessState.Success()
 		res.ExitCode = cmd.ProcessState.ExitCode()
 	}
 	res.Output = outSb.String()
 
-	return res
+	return res, nil
 }

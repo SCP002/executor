@@ -7,6 +7,4 @@ import (
 )
 
 // setCmdAttr sets OS specific process attributes
-func setCmdAttr(cmd *exec.Cmd, newConsole bool, hide bool) {
-	//
-}
+func setCmdAttr(cmd *exec.Cmd, newConsole bool, hide bool) {}
