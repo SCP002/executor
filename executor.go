@@ -3,10 +3,13 @@ package executor
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -92,6 +95,13 @@ func Start(opts Options) (Result, error) {
 		go scan(stdoutScanner)
 	}
 
+    sigIntCh := make(chan os.Signal, 1)
+    signal.Notify(sigIntCh, os.Interrupt, syscall.SIGTERM)
+    go func() {
+        <-sigIntCh
+        _ = cmd.Process.Kill()
+    }()
+
 	err := cmd.Start()
 	if err != nil {
 		return res, fmt.Errorf("Start process: %w", err)
@@ -100,7 +110,10 @@ func Start(opts Options) (Result, error) {
 
 	if opts.Wait {
 		if err = cmd.Wait(); err != nil {
-			return res, fmt.Errorf("Wait for process: %w", err)
+			exitErr := &exec.ExitError{}
+			if !errors.As(err, &exitErr) {
+				return res, fmt.Errorf("Wait for process: %w", err)
+			}
 		}
 	}
 	if cmd.ProcessState != nil {
