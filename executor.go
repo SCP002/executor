@@ -109,11 +109,9 @@ func Start(opts Options) (Result, error) {
 	res.StartOk = true
 
 	if opts.Wait {
-		if err = cmd.Wait(); err != nil {
-			exitErr := &exec.ExitError{}
-			if !errors.As(err, &exitErr) {
-				return res, fmt.Errorf("Wait for process: %w", err)
-			}
+		exitErr := &exec.ExitError{}
+		if err = cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
+			return res, fmt.Errorf("Wait for process: %w", err)
 		}
 	}
 	if cmd.ProcessState != nil {
