@@ -1,3 +1,5 @@
+//go:build windows
+
 package main
 
 import (
@@ -10,7 +12,7 @@ import (
 
 func main() {
 	opts := executor.Options{
-		Command: ".\\sample-executable.cmd",
+		Command: ".\\script.cmd",
 		Args:    []string{"arg1"},
 		Wait:    true,
 		Print:   true,

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -65,12 +66,12 @@ func Start(opts Options) (Result, error) {
 		if err != nil {
 			return res, fmt.Errorf("Create stdout pipe: %w", err)
 		}
-		cmd.Stderr = cmd.Stdout // Redirect StdErr to StdOut
-		stdoutScanner := bufio.NewScanner(stdoutReader)
-		stdoutScanner.Split(bufio.ScanRunes)
+		cmd.Stderr = cmd.Stdout // Redirect StdErr to StdOut. Must appear after creating a pipe.
 
-		scan := func(scanner *bufio.Scanner) {
+		scan := func(reader io.ReadCloser) {
 			var lineSb strings.Builder
+			scanner := bufio.NewScanner(reader)
+			scanner.Split(bufio.ScanRunes)
 			for scanner.Scan() {
 				char := scanner.Text()
 				if opts.Print {
@@ -92,7 +93,7 @@ func Start(opts Options) (Result, error) {
 				}
 			}
 		}
-		go scan(stdoutScanner)
+		go scan(stdoutReader)
 	}
 
     sigIntCh := make(chan os.Signal, 1)
