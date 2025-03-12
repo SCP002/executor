@@ -55,6 +55,7 @@ func Start(opts Options) (Result, error) {
 	cmd.Stdin = os.Stdin // Fix "ERROR: Input redirection is not supported, exiting the process immediately" on Windows
 
 	var outSb strings.Builder
+	scanDoneCh := make(chan struct{}, 1)
 
 	if opts.NewConsole || opts.Hide {
 		setCmdAttr(cmd, opts.NewConsole, opts.Hide)
@@ -92,16 +93,17 @@ func Start(opts Options) (Result, error) {
 					}
 				}
 			}
+			scanDoneCh <- struct{}{}
 		}
 		go scan(stdoutReader)
 	}
 
-    sigIntCh := make(chan os.Signal, 1)
-    signal.Notify(sigIntCh, os.Interrupt, syscall.SIGTERM)
-    go func() {
-        <-sigIntCh
-        _ = cmd.Process.Kill()
-    }()
+	sigIntCh := make(chan os.Signal, 1)
+	signal.Notify(sigIntCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigIntCh
+		_ = cmd.Process.Kill()
+	}()
 
 	err := cmd.Start()
 	if err != nil {
@@ -114,6 +116,7 @@ func Start(opts Options) (Result, error) {
 		if err = cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
 			return res, fmt.Errorf("Wait for process: %w", err)
 		}
+		<-scanDoneCh
 	}
 	if cmd.ProcessState != nil {
 		res.DoneOk = cmd.ProcessState.Success()
