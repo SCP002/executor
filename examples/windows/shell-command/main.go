@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -11,7 +12,8 @@ import (
 )
 
 func main() {
-	dirCmd := executor.NewCommand(executor.CmdOptions{
+	ctx := context.Background()
+	dirCmd := executor.NewCommand(ctx, executor.CmdOptions{
 		Command: "cmd.exe",
 		Args:    []string{"/C", "dir", "C:\\"},
 	})

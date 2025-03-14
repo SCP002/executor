@@ -11,14 +11,12 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 )
 
 // CmdOptions respresents options to create a process.
 type CmdOptions struct {
 	Command    string                        // Command to run
 	Args       []string                      // Command arguments
-	Timeout    uint                          // Time in seconds allotted for the execution of the process before it gets killed
 	Dir        string                        // Working directory
 }
 
@@ -44,17 +42,10 @@ type Result struct {
 // Command respresents command to launch.
 type Command struct {
 	cmd    *exec.Cmd
-	cancel context.CancelFunc
 }
 
-// NewCommand returns new command with options `opts`.
-func NewCommand(opts CmdOptions) *Command {
-	ctx := context.Background()
-	var cancel context.CancelFunc
-	if opts.Timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(opts.Timeout)*time.Second)
-	}
-
+// NewCommand returns new command with context `ctx` and options `opts`.
+func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 	cmd := exec.CommandContext(ctx, opts.Command, opts.Args...)
 	cmd.Dir = opts.Dir
 	cmd.Stdin = os.Stdin // Fix "ERROR: Input redirection is not supported, exiting the process immediately" on Windows
@@ -66,7 +57,7 @@ func NewCommand(opts CmdOptions) *Command {
 		_ = cmd.Process.Kill()
 	}()
 
-	return &Command{cmd: cmd, cancel: cancel}
+	return &Command{cmd: cmd}
 }
 
 // Start starts a process with options `opts`.
@@ -131,9 +122,6 @@ func (c Command) Start(opts StartOptions) (Result, error) {
 			return res, fmt.Errorf("Wait for process: %w", err)
 		}
 		<-scanDoneCh
-		if c.cancel != nil {
-			c.cancel()
-		}
 	}
 	if c.cmd.ProcessState != nil {
 		res.DoneOk = c.cmd.ProcessState.Success()

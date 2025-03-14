@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -11,7 +12,8 @@ import (
 )
 
 func main() {
-	script := executor.NewCommand(executor.CmdOptions{
+	ctx := context.Background()
+	script := executor.NewCommand(ctx, executor.CmdOptions{
 		Command: ".\\script.cmd",
 		Args:    []string{"arg1"},
 	})
