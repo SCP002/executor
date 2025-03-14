@@ -11,13 +11,16 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"golang.org/x/text/encoding/charmap"
+    "golang.org/x/text/transform"
 )
 
 // CmdOptions respresents options to create a process.
 type CmdOptions struct {
-	Command    string                        // Command to run
-	Args       []string                      // Command arguments
-	Dir        string                        // Working directory
+	Command string   // Command to run
+	Args    []string // Command arguments
+	Dir     string   // Working directory
 }
 
 // StartOptions respresents options to start a process.
@@ -25,6 +28,7 @@ type StartOptions struct {
 	Print      bool                          // Print output to console?
 	Capture    bool                          // Build buffer and capture output into Result.Output?
 	Wait       bool                          // Wait for program to finish?
+	Encoding   *charmap.Charmap              // Endoding.
 	NewConsole bool                          // Spawn new console window on Windows?
 	Hide       bool                          // Try to hide process window on Windows?
 	OnChar     func(c string, p *os.Process) // Callback for each character from process StdOut and StdErr
@@ -41,7 +45,7 @@ type Result struct {
 
 // Command respresents command to launch.
 type Command struct {
-	cmd    *exec.Cmd
+	cmd *exec.Cmd
 }
 
 // NewCommand returns new command with context `ctx` and options `opts`.
@@ -81,7 +85,10 @@ func (c Command) Start(opts StartOptions) (Result, error) {
 		}
 		c.cmd.Stderr = c.cmd.Stdout // Redirect StdErr to StdOut. Must appear after creating a pipe.
 
-		scan := func(reader io.ReadCloser) {
+		scan := func(reader io.Reader) {
+			if opts.Encoding != nil {
+				reader = transform.NewReader(reader, opts.Encoding.NewDecoder())
+			}
 			var lineSb strings.Builder
 			scanner := bufio.NewScanner(reader)
 			scanner.Split(bufio.ScanRunes)

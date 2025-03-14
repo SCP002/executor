@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/SCP002/executor"
+	"golang.org/x/text/encoding/charmap"
 )
 
 func main() {
@@ -19,11 +20,12 @@ func main() {
 	})
 
 	res, err := dirCmd.Start(executor.StartOptions{
-		Wait:    true,
-		Print:   true,
-		Capture: true,
-		OnChar:  func(c string, p *os.Process) {},
-		OnLine:  func(l string, p *os.Process) {},
+		Wait:     true,
+		Print:    true,
+		Capture:  true,
+		Encoding: charmap.CodePage866,
+		OnChar:   func(c string, p *os.Process) {},
+		OnLine:   func(l string, p *os.Process) {},
 	})
 	if err != nil {
 		panic(err)
