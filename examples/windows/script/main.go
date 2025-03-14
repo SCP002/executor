@@ -11,17 +11,18 @@ import (
 )
 
 func main() {
-	opts := executor.Options{
+	script := executor.NewCommand(executor.CmdOptions{
 		Command: ".\\script.cmd",
 		Args:    []string{"arg1"},
+	})
+
+	res, err := script.Start(executor.StartOptions{
 		Wait:    true,
 		Print:   true,
 		Capture: true,
-		OnChar: func(c string, p *os.Process) {},
-		OnLine: func(l string, p *os.Process) {},
-	}
-
-	res, err := executor.Start(opts)
+		OnChar:  func(c string, p *os.Process) {},
+		OnLine:  func(l string, p *os.Process) {},
+	})
 	if err != nil {
 		panic(err)
 	}

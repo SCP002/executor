@@ -11,17 +11,18 @@ import (
 )
 
 func main() {
-	opts := executor.Options{
+	dirCmd := executor.NewCommand(executor.CmdOptions{
 		Command: "cmd.exe",
 		Args:    []string{"/C", "dir", "C:\\"},
+	})
+
+	res, err := dirCmd.Start(executor.StartOptions{
 		Wait:    true,
 		Print:   true,
 		Capture: true,
-		OnChar: func(c string, p *os.Process) {},
-		OnLine: func(l string, p *os.Process) {},
-	}
-
-	res, err := executor.Start(opts)
+		OnChar:  func(c string, p *os.Process) {},
+		OnLine:  func(l string, p *os.Process) {},
+	})
 	if err != nil {
 		panic(err)
 	}

@@ -14,15 +14,19 @@ import (
 	"time"
 )
 
-// Options respresents options to start process.
-type Options struct {
+// CmdOptions respresents options to create a process.
+type CmdOptions struct {
 	Command    string                        // Command to run
 	Args       []string                      // Command arguments
+	Timeout    uint                          // Time in seconds allotted for the execution of the process before it gets killed
+	Dir        string                        // Working directory
+}
+
+// StartOptions respresents options to start a process.
+type StartOptions struct {
 	Print      bool                          // Print output to console?
 	Capture    bool                          // Build buffer and capture output into Result.Output?
 	Wait       bool                          // Wait for program to finish?
-	Timeout    uint                          // Time in seconds allotted for the execution of the process before it get killed
-	Dir        string                        // Working directory
 	NewConsole bool                          // Spawn new console window on Windows?
 	Hide       bool                          // Try to hide process window on Windows?
 	OnChar     func(c string, p *os.Process) // Callback for each character from process StdOut and StdErr
@@ -37,37 +41,54 @@ type Result struct {
 	Output   string // Output of StdOut and StdErr
 }
 
-// Start starts a process with options `opts`.
-func Start(opts Options) (Result, error) {
-	res := Result{
-		ExitCode: -1,
-	}
+// Command respresents command to launch.
+type Command struct {
+	cmd    *exec.Cmd
+	cancel context.CancelFunc
+}
 
+// NewCommand returns new command with options `opts`.
+func NewCommand(opts CmdOptions) *Command {
 	ctx := context.Background()
+	var cancel context.CancelFunc
 	if opts.Timeout > 0 {
-		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(opts.Timeout)*time.Second)
-		defer cancel()
 	}
 
 	cmd := exec.CommandContext(ctx, opts.Command, opts.Args...)
 	cmd.Dir = opts.Dir
 	cmd.Stdin = os.Stdin // Fix "ERROR: Input redirection is not supported, exiting the process immediately" on Windows
 
+	sigIntCh := make(chan os.Signal, 1)
+	signal.Notify(sigIntCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigIntCh
+		_ = cmd.Process.Kill()
+	}()
+
+	return &Command{cmd: cmd, cancel: cancel}
+}
+
+// Start starts a process with options `opts`.
+func (c Command) Start(opts StartOptions) (Result, error) {
+	res := Result{
+		ExitCode: -1,
+	}
+
 	var outSb strings.Builder
 	scanDoneCh := make(chan struct{}, 1)
 
 	if opts.NewConsole || opts.Hide {
-		setCmdAttr(cmd, opts.NewConsole, opts.Hide)
+		setCmdAttr(c.cmd, opts.NewConsole, opts.Hide)
 
-		cmd.Stderr = os.Stderr
-		cmd.Stdout = os.Stdout
+		c.cmd.Stderr = os.Stderr
+		c.cmd.Stdout = os.Stdout
 	} else { // Can capture output
-		stdoutReader, err := cmd.StdoutPipe()
+		stdoutReader, err := c.cmd.StdoutPipe()
 		if err != nil {
 			return res, fmt.Errorf("Create stdout pipe: %w", err)
 		}
-		cmd.Stderr = cmd.Stdout // Redirect StdErr to StdOut. Must appear after creating a pipe.
+		c.cmd.Stderr = c.cmd.Stdout // Redirect StdErr to StdOut. Must appear after creating a pipe.
 
 		scan := func(reader io.ReadCloser) {
 			var lineSb strings.Builder
@@ -82,11 +103,11 @@ func Start(opts Options) (Result, error) {
 					outSb.WriteString(char)
 				}
 				if opts.OnChar != nil {
-					opts.OnChar(char, cmd.Process)
+					opts.OnChar(char, c.cmd.Process)
 				}
 				if opts.OnLine != nil {
 					if char == "\n" || char == "\r" {
-						opts.OnLine(lineSb.String(), cmd.Process)
+						opts.OnLine(lineSb.String(), c.cmd.Process)
 						lineSb.Reset()
 					} else {
 						lineSb.WriteString(char)
@@ -98,14 +119,7 @@ func Start(opts Options) (Result, error) {
 		go scan(stdoutReader)
 	}
 
-	sigIntCh := make(chan os.Signal, 1)
-	signal.Notify(sigIntCh, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigIntCh
-		_ = cmd.Process.Kill()
-	}()
-
-	err := cmd.Start()
+	err := c.cmd.Start()
 	if err != nil {
 		return res, fmt.Errorf("Start process: %w", err)
 	}
@@ -113,14 +127,17 @@ func Start(opts Options) (Result, error) {
 
 	if opts.Wait {
 		exitErr := &exec.ExitError{}
-		if err = cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
+		if err = c.cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
 			return res, fmt.Errorf("Wait for process: %w", err)
 		}
 		<-scanDoneCh
+		if c.cancel != nil {
+			c.cancel()
+		}
 	}
-	if cmd.ProcessState != nil {
-		res.DoneOk = cmd.ProcessState.Success()
-		res.ExitCode = cmd.ProcessState.ExitCode()
+	if c.cmd.ProcessState != nil {
+		res.DoneOk = c.cmd.ProcessState.Success()
+		res.ExitCode = c.cmd.ProcessState.ExitCode()
 	}
 	res.Output = outSb.String()
 
