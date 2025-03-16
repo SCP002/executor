@@ -48,11 +48,8 @@ type Command struct {
 	cmd           *exec.Cmd
 	stdoutReader1 *io.PipeReader
 	stdoutWriter2 *io.PipeWriter
+	prevCmd       *exec.Cmd
 }
-
-// TODO: https://stackoverflow.com/questions/24677285/how-to-have-multiple-consumer-from-one-io-reader
-// TODO: https://stackoverflow.com/questions/10781516/how-to-pipe-several-commands-in-go
-// TODO: https://stackoverflow.com/questions/69954944/capture-stdout-from-exec-command-line-by-line-and-also-pipe-to-os-stdout
 
 // NewCommand returns new command with context `ctx` and options `opts`.
 func NewCommand(ctx context.Context, opts CmdOptions) *Command {
@@ -81,13 +78,8 @@ func (c *Command) PipeStdoutTo(to *Command) {
 
 	c.stdoutReader1 = stdoutReader1
 	to.stdoutWriter2 = stdoutWriter2
+	to.prevCmd = c.cmd
 	to.cmd.Stdin = stdoutReader2
-
-	// go func() {
-	// 	t := time.After(time.Second * 5)
-	// 	<-t
-	// 	stdoutWriter2.Close()
-	// }()
 }
 
 // Start starts a process with options `opts`.
@@ -146,6 +138,11 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		return res, fmt.Errorf("Start process: %w", err)
 	}
 	res.StartOk = true
+
+	if c.stdoutWriter2 != nil {
+		_ = c.prevCmd.Wait()
+		c.stdoutWriter2.Close()
+	}
 
 	if opts.Wait {
 		exitErr := &exec.ExitError{}
