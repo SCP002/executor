@@ -13,7 +13,7 @@ import (
 	"syscall"
 
 	"golang.org/x/text/encoding/charmap"
-    "golang.org/x/text/transform"
+	"golang.org/x/text/transform"
 )
 
 // CmdOptions respresents options to create a process.
@@ -31,8 +31,8 @@ type StartOptions struct {
 	Encoding   *charmap.Charmap              // Endoding.
 	NewConsole bool                          // Spawn new console window on Windows?
 	Hide       bool                          // Try to hide process window on Windows?
-	OnChar     func(c string, p *os.Process) // Callback for each character from process StdOut and StdErr
-	OnLine     func(l string, p *os.Process) // Callback for each line from process StdOut and StdErr
+	OnChar     func(c string, p *os.Process) // Callback for each character from process Stdout and Stderr
+	OnLine     func(l string, p *os.Process) // Callback for each line from process Stdout and Stderr
 }
 
 // Result respresents process run result.
@@ -40,13 +40,19 @@ type Result struct {
 	DoneOk   bool   // Process exited successfully?
 	StartOk  bool   // Process started successfully?
 	ExitCode int    // Exit code
-	Output   string // Output of StdOut and StdErr
+	Output   string // Output of Stdout and Stderr
 }
 
 // Command respresents command to launch.
 type Command struct {
-	cmd *exec.Cmd
+	cmd           *exec.Cmd
+	stdoutReader1 *io.PipeReader
+	stdoutWriter2 *io.PipeWriter
 }
+
+// TODO: https://stackoverflow.com/questions/24677285/how-to-have-multiple-consumer-from-one-io-reader
+// TODO: https://stackoverflow.com/questions/10781516/how-to-pipe-several-commands-in-go
+// TODO: https://stackoverflow.com/questions/69954944/capture-stdout-from-exec-command-line-by-line-and-also-pipe-to-os-stdout
 
 // NewCommand returns new command with context `ctx` and options `opts`.
 func NewCommand(ctx context.Context, opts CmdOptions) *Command {
@@ -61,11 +67,31 @@ func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 		_ = cmd.Process.Kill()
 	}()
 
-	return &Command{cmd: cmd}
+	stdoutReader1, stdoutWriter1 := io.Pipe()
+	cmd.Stdout = stdoutWriter1
+
+	return &Command{cmd: cmd, stdoutReader1: stdoutReader1}
+}
+
+// PipeStdoutTo pipes Stdout to StdIn of `to`.
+func (c *Command) PipeStdoutTo(to *Command) {
+	stdoutReader1, stdoutWriter1 := io.Pipe()
+	stdoutReader2, stdoutWriter2 := io.Pipe()
+	c.cmd.Stdout = io.MultiWriter(stdoutWriter1, stdoutWriter2)
+
+	c.stdoutReader1 = stdoutReader1
+	to.stdoutWriter2 = stdoutWriter2
+	to.cmd.Stdin = stdoutReader2
+
+	// go func() {
+	// 	t := time.After(time.Second * 5)
+	// 	<-t
+	// 	stdoutWriter2.Close()
+	// }()
 }
 
 // Start starts a process with options `opts`.
-func (c Command) Start(opts StartOptions) (Result, error) {
+func (c *Command) Start(opts StartOptions) (Result, error) {
 	res := Result{
 		ExitCode: -1,
 	}
@@ -79,13 +105,12 @@ func (c Command) Start(opts StartOptions) (Result, error) {
 		c.cmd.Stderr = os.Stderr
 		c.cmd.Stdout = os.Stdout
 	} else { // Can capture output
-		stdoutReader, err := c.cmd.StdoutPipe()
-		if err != nil {
-			return res, fmt.Errorf("Create stdout pipe: %w", err)
-		}
-		c.cmd.Stderr = c.cmd.Stdout // Redirect StdErr to StdOut. Must appear after creating a pipe.
+		c.cmd.Stderr = c.cmd.Stdout // Redirect Stderr to Stdout. Must appear after creating a pipe.
 
 		scan := func(reader io.Reader) {
+			defer func() {
+				scanDoneCh <- struct{}{}
+			}()
 			if opts.Encoding != nil {
 				reader = transform.NewReader(reader, opts.Encoding.NewDecoder())
 			}
@@ -112,9 +137,8 @@ func (c Command) Start(opts StartOptions) (Result, error) {
 					}
 				}
 			}
-			scanDoneCh <- struct{}{}
 		}
-		go scan(stdoutReader)
+		go scan(c.stdoutReader1)
 	}
 
 	err := c.cmd.Start()
@@ -128,6 +152,7 @@ func (c Command) Start(opts StartOptions) (Result, error) {
 		if err = c.cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
 			return res, fmt.Errorf("Wait for process: %w", err)
 		}
+		c.stdoutReader1.Close()
 		<-scanDoneCh
 	}
 	if c.cmd.ProcessState != nil {
