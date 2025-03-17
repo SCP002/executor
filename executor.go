@@ -45,10 +45,10 @@ type Result struct {
 
 // Command respresents command to launch.
 type Command struct {
-	cmd           *exec.Cmd
-	stdoutReader1 *io.PipeReader
-	stdoutWriter2 *io.PipeWriter
-	prevCmd       *exec.Cmd
+	cmd              *exec.Cmd
+	prevCmd          *exec.Cmd
+	stdoutScanReader *io.PipeReader
+	stdoutPipeWriter *io.PipeWriter
 }
 
 // NewCommand returns new command with context `ctx` and options `opts`.
@@ -64,22 +64,22 @@ func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 		_ = cmd.Process.Kill()
 	}()
 
-	stdoutReader1, stdoutWriter1 := io.Pipe()
-	cmd.Stdout = stdoutWriter1
+	stdoutScanReader, stdoutScanWriter := io.Pipe()
+	cmd.Stdout = stdoutScanWriter
 
-	return &Command{cmd: cmd, stdoutReader1: stdoutReader1}
+	return &Command{cmd: cmd, stdoutScanReader: stdoutScanReader}
 }
 
 // PipeStdoutTo pipes Stdout to StdIn of `to`.
 func (c *Command) PipeStdoutTo(to *Command) {
-	stdoutReader1, stdoutWriter1 := io.Pipe()
-	stdoutReader2, stdoutWriter2 := io.Pipe()
-	c.cmd.Stdout = io.MultiWriter(stdoutWriter1, stdoutWriter2)
+	stdoutScanReader, stdoutScanWriter := io.Pipe()
+	stdoutPipeReader, stdoutPipeWriter := io.Pipe()
+	c.cmd.Stdout = io.MultiWriter(stdoutScanWriter, stdoutPipeWriter)
 
-	c.stdoutReader1 = stdoutReader1
-	to.stdoutWriter2 = stdoutWriter2
+	c.stdoutScanReader = stdoutScanReader
+	to.stdoutPipeWriter = stdoutPipeWriter
+	to.cmd.Stdin = stdoutPipeReader
 	to.prevCmd = c.cmd
-	to.cmd.Stdin = stdoutReader2
 }
 
 // Start starts a process with options `opts`.
@@ -130,7 +130,7 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 				}
 			}
 		}
-		go scan(c.stdoutReader1)
+		go scan(c.stdoutScanReader)
 	}
 
 	err := c.cmd.Start()
@@ -139,17 +139,20 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 	}
 	res.StartOk = true
 
-	if c.stdoutWriter2 != nil {
-		_ = c.prevCmd.Wait()
-		c.stdoutWriter2.Close()
+	if c.prevCmd != nil {
+		if err := c.prevCmd.Wait(); err != nil {
+			return res, fmt.Errorf("Wait for previous process: %w", err)
+		}
 	}
-
+	if c.stdoutPipeWriter != nil {
+		c.stdoutPipeWriter.Close()
+	}
 	if opts.Wait {
 		exitErr := &exec.ExitError{}
 		if err = c.cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
 			return res, fmt.Errorf("Wait for process: %w", err)
 		}
-		c.stdoutReader1.Close()
+		c.stdoutScanReader.Close()
 		<-scanDoneCh
 	}
 	if c.cmd.ProcessState != nil {
