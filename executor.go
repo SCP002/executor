@@ -52,6 +52,7 @@ type Command struct {
 	stdoutScanReader *io.PipeReader
 	stderrScanReader *io.PipeReader
 	stdoutPipeWriter *io.PipeWriter
+	stderrPipeWriter *io.PipeWriter
 }
 
 // NewCommand returns new command with context `ctx` and options `opts`.
@@ -70,7 +71,7 @@ func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 	return &Command{cmd: cmd}
 }
 
-// PipeStdoutTo pipes Stdout to StdIn of `to`.
+// PipeStdoutTo pipes Stdout to Stdin of `to`.
 func (c *Command) PipeStdoutTo(to *Command) {
 	stdoutScanReader, stdoutScanWriter := io.Pipe()
 	stdoutPipeReader, stdoutPipeWriter := io.Pipe()
@@ -79,6 +80,18 @@ func (c *Command) PipeStdoutTo(to *Command) {
 	c.stdoutScanReader = stdoutScanReader
 	to.stdoutPipeWriter = stdoutPipeWriter
 	to.cmd.Stdin = stdoutPipeReader
+	to.prevCmd = c.cmd
+}
+
+// PipeStderrTo pipes Stderr to Stdin of `to`.
+func (c *Command) PipeStderrTo(to *Command) {
+	stderrScanReader, stderrScanWriter := io.Pipe()
+	stderrPipeReader, stderrPipeWriter := io.Pipe()
+	c.cmd.Stdout = io.MultiWriter(stderrScanWriter, stderrPipeWriter)
+
+	c.stderrScanReader = stderrScanReader
+	to.stderrPipeWriter = stderrPipeWriter
+	to.cmd.Stdin = stderrPipeReader
 	to.prevCmd = c.cmd
 }
 
@@ -161,6 +174,9 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		}
 	}
 	if c.stdoutPipeWriter != nil {
+		c.stdoutPipeWriter.Close()
+	}
+	if c.stderrPipeWriter != nil {
 		c.stdoutPipeWriter.Close()
 	}
 	if opts.Wait {
