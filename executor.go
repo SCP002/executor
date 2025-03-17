@@ -18,29 +18,31 @@ import (
 
 // CmdOptions respresents options to create a process.
 type CmdOptions struct {
-	Command string   // Command to run
-	Args    []string // Command arguments
-	Dir     string   // Working directory
+	Command string   // Command to run.
+	Args    []string // Command arguments.
+	Dir     string   // Working directory.
 }
 
 // StartOptions respresents options to start a process.
 type StartOptions struct {
-	Print      bool                          // Print output to console?
+	ScanStdout bool                          // Capture Stdout?
+	ScanStderr bool                          // Capture Stderr?
+	Print      bool                          // Print output?
 	Capture    bool                          // Build buffer and capture output into Result.Output?
 	Wait       bool                          // Wait for program to finish?
 	Encoding   *charmap.Charmap              // Endoding.
 	NewConsole bool                          // Spawn new console window on Windows?
 	Hide       bool                          // Try to hide process window on Windows?
-	OnChar     func(c string, p *os.Process) // Callback for each character from process Stdout and Stderr
-	OnLine     func(l string, p *os.Process) // Callback for each line from process Stdout and Stderr
+	OnChar     func(c string, p *os.Process) // Callback for each character.
+	OnLine     func(l string, p *os.Process) // Callback for each.
 }
 
 // Result respresents process run result.
 type Result struct {
 	DoneOk   bool   // Process exited successfully?
 	StartOk  bool   // Process started successfully?
-	ExitCode int    // Exit code
-	Output   string // Output of Stdout and Stderr
+	ExitCode int    // Exit code.
+	Output   string // Captured output.
 }
 
 // Command respresents command to launch.
@@ -48,6 +50,7 @@ type Command struct {
 	cmd              *exec.Cmd
 	prevCmd          *exec.Cmd
 	stdoutScanReader *io.PipeReader
+	stderrScanReader *io.PipeReader
 	stdoutPipeWriter *io.PipeWriter
 }
 
@@ -64,10 +67,7 @@ func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 		_ = cmd.Process.Kill()
 	}()
 
-	stdoutScanReader, stdoutScanWriter := io.Pipe()
-	cmd.Stdout = stdoutScanWriter
-
-	return &Command{cmd: cmd, stdoutScanReader: stdoutScanReader}
+	return &Command{cmd: cmd}
 }
 
 // PipeStdoutTo pipes Stdout to StdIn of `to`.
@@ -97,7 +97,19 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		c.cmd.Stderr = os.Stderr
 		c.cmd.Stdout = os.Stdout
 	} else { // Can capture output
-		c.cmd.Stderr = c.cmd.Stdout // Redirect Stderr to Stdout. Must appear after creating a pipe.
+		if c.stdoutScanReader == nil && opts.ScanStdout {
+			stdoutScanReader, stdoutScanWriter := io.Pipe()
+			c.cmd.Stdout = stdoutScanWriter
+			c.stdoutScanReader = stdoutScanReader
+		}
+		if c.stderrScanReader == nil && opts.ScanStderr {
+			stderrScanReader, stderrScanWriter := io.Pipe()
+			c.cmd.Stderr = stderrScanWriter
+			c.stderrScanReader = stderrScanReader
+		}
+		if opts.ScanStdout && opts.ScanStderr {
+			c.cmd.Stderr = c.cmd.Stdout // Redirect Stderr to Stdout. Must appear after creating a pipe.
+		}
 
 		scan := func(reader io.Reader) {
 			defer func() {
@@ -130,7 +142,11 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 				}
 			}
 		}
-		go scan(c.stdoutScanReader)
+		if c.stdoutScanReader != nil || opts.ScanStdout {
+			go scan(c.stdoutScanReader)
+		} else if c.stderrScanReader != nil || opts.ScanStderr {
+			go scan(c.stderrScanReader)
+		}
 	}
 
 	err := c.cmd.Start()
@@ -152,8 +168,15 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		if err = c.cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
 			return res, fmt.Errorf("Wait for process: %w", err)
 		}
-		c.stdoutScanReader.Close()
-		<-scanDoneCh
+		if c.stdoutScanReader != nil {
+			c.stdoutScanReader.Close()
+		}
+		if c.stderrScanReader != nil {
+			c.stderrScanReader.Close()
+		}
+		if opts.ScanStderr || opts.ScanStdout {
+			<-scanDoneCh
+		}
 	}
 	if c.cmd.ProcessState != nil {
 		res.DoneOk = c.cmd.ProcessState.Success()

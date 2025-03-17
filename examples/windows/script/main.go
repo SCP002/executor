@@ -19,11 +19,13 @@ func main() {
 	})
 
 	res, err := script.Start(executor.StartOptions{
-		Wait:    true,
-		Print:   true,
-		Capture: true,
-		OnChar:  func(c string, p *os.Process) {},
-		OnLine:  func(l string, p *os.Process) {},
+		ScanStdout: true,
+		ScanStderr: true,
+		Wait:       true,
+		Print:      true,
+		Capture:    true,
+		OnChar:     func(c string, p *os.Process) {},
+		OnLine:     func(l string, p *os.Process) {},
 	})
 	if err != nil {
 		panic(err)
