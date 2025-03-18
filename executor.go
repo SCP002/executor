@@ -87,7 +87,7 @@ func (c *Command) PipeStdoutTo(to *Command) {
 func (c *Command) PipeStderrTo(to *Command) {
 	stderrScanReader, stderrScanWriter := io.Pipe()
 	stderrPipeReader, stderrPipeWriter := io.Pipe()
-	c.cmd.Stdout = io.MultiWriter(stderrScanWriter, stderrPipeWriter)
+	c.cmd.Stderr = io.MultiWriter(stderrScanWriter, stderrPipeWriter)
 
 	c.stderrScanReader = stderrScanReader
 	to.stderrPipeWriter = stderrPipeWriter
@@ -177,7 +177,7 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		c.stdoutPipeWriter.Close()
 	}
 	if c.stderrPipeWriter != nil {
-		c.stdoutPipeWriter.Close()
+		c.stderrPipeWriter.Close()
 	}
 	if opts.Wait {
 		exitErr := &exec.ExitError{}
