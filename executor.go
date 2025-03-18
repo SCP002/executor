@@ -8,9 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"os/signal"
 	"strings"
-	"syscall"
 
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/transform"
@@ -25,8 +23,8 @@ type CmdOptions struct {
 
 // StartOptions respresents options to start a process.
 type StartOptions struct {
-	ScanStdout bool                          // Capture Stdout?
-	ScanStderr bool                          // Capture Stderr?
+	ScanStdout bool                          // Scan for Stdout (Capture + Print)?
+	ScanStderr bool                          // Scab fir Stderr (Captrure + Print)?
 	Print      bool                          // Print output?
 	Capture    bool                          // Build buffer and capture output into Result.Output?
 	Wait       bool                          // Wait for program to finish?
@@ -60,14 +58,6 @@ func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 	cmd := exec.CommandContext(ctx, opts.Command, opts.Args...)
 	cmd.Dir = opts.Dir
 	cmd.Stdin = os.Stdin // Fix "ERROR: Input redirection is not supported, exiting the process immediately" on Windows
-
-	sigIntCh := make(chan os.Signal, 1)
-	signal.Notify(sigIntCh, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigIntCh
-		_ = cmd.Process.Kill()
-	}()
-
 	return &Command{cmd: cmd}
 }
 
