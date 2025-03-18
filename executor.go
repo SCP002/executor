@@ -34,7 +34,7 @@ type StartOptions struct {
 	NewConsole bool                          // Spawn new console window on Windows?
 	Hide       bool                          // Try to hide process window on Windows?
 	OnChar     func(c string, p *os.Process) // Callback for each character.
-	OnLine     func(l string, p *os.Process) // Callback for each.
+	OnLine     func(l string, p *os.Process) // Callback for each line.
 }
 
 // Result respresents process run result.
@@ -166,9 +166,9 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 			}
 		}
 
-		if c.stdoutScanReader != nil || opts.ScanStdout {
+		if c.stdoutScanReader != nil {
 			go scan(c.stdoutScanReader, true)
-		} else if c.stderrScanReader != nil || opts.ScanStderr {
+		} else if c.stderrScanReader != nil {
 			go scan(c.stderrScanReader, false)
 		}
 	}
