@@ -59,10 +59,10 @@ type Command struct {
 func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 	cmd := exec.CommandContext(ctx, opts.Command, opts.Args...)
 	cmd.Dir = opts.Dir
-	cmd.Stdin = os.Stdin // Fix "ERROR: Input redirection is not supported, exiting the process immediately" on Windows
+	cmd.Stdin = os.Stdin // Fix "ERROR: Input redirection is not supported, exiting the process immediately" on Windows.
 
 	sigIntCh := make(chan os.Signal, 1)
-	signal.Notify(sigIntCh, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigIntCh, os.Interrupt, syscall.SIGTERM) // Fix broken console on Ctrl + C.
 
 	return &Command{cmd: cmd}
 }
@@ -115,7 +115,7 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 
 		c.cmd.Stderr = os.Stderr
 		c.cmd.Stdout = os.Stdout
-	} else { // Can capture output
+	} else { // Can capture output.
 		if c.stdoutScanReader == nil && opts.ScanStdout {
 			stdoutScanReader, stdoutScanWriter := io.Pipe()
 			c.cmd.Stdout = stdoutScanWriter
