@@ -165,6 +165,7 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 				}
 			}
 		}
+
 		if c.stdoutScanReader != nil || opts.ScanStdout {
 			go scan(c.stdoutScanReader, true)
 		} else if c.stderrScanReader != nil || opts.ScanStderr {
@@ -189,6 +190,7 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 	if c.stderrPipeWriter != nil {
 		c.stderrPipeWriter.Close()
 	}
+
 	if opts.Wait {
 		exitErr := &exec.ExitError{}
 		if err = c.cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
@@ -204,6 +206,7 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 			<-scanDoneCh
 		}
 	}
+
 	if c.cmd.ProcessState != nil {
 		res.DoneOk = c.cmd.ProcessState.Success()
 		res.ExitCode = c.cmd.ProcessState.ExitCode()
