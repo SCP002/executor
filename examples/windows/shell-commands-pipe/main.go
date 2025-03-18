@@ -25,6 +25,7 @@ func main() {
 	})
 
 	dirCmd.PipeStdoutTo(findStrCmd)
+	dirCmd.PipeStderrTo(findStrCmd)
 
 	_, err := dirCmd.Start(executor.StartOptions{
 		Encoding: charmap.CodePage866,

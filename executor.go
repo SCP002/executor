@@ -73,6 +73,11 @@ func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 
 // PipeStdoutTo pipes Stdout to Stdin of `to`.
 func (c *Command) PipeStdoutTo(to *Command) {
+	if c.stderrScanReader != nil {
+		c.cmd.Stdout = c.cmd.Stderr
+		return
+	}
+
 	stdoutScanReader, stdoutScanWriter := io.Pipe()
 	stdoutPipeReader, stdoutPipeWriter := io.Pipe()
 	c.cmd.Stdout = io.MultiWriter(stdoutScanWriter, stdoutPipeWriter)
@@ -85,6 +90,11 @@ func (c *Command) PipeStdoutTo(to *Command) {
 
 // PipeStderrTo pipes Stderr to Stdin of `to`.
 func (c *Command) PipeStderrTo(to *Command) {
+	if c.stdoutScanReader != nil {
+		c.cmd.Stderr = c.cmd.Stdout
+		return
+	}
+
 	stderrScanReader, stderrScanWriter := io.Pipe()
 	stderrPipeReader, stderrPipeWriter := io.Pipe()
 	c.cmd.Stderr = io.MultiWriter(stderrScanWriter, stderrPipeWriter)
