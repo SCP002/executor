@@ -134,7 +134,7 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 			c.cmd.Stderr = c.cmd.Stdout // Redirect Stderr to Stdout. Must appear after creating a pipe.
 		}
 
-		scan := func(reader io.Reader) {
+		scan := func(reader io.Reader, printToStdout bool) {
 			defer func() {
 				scanDoneCh <- struct{}{}
 			}()
@@ -147,7 +147,11 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 			for scanner.Scan() {
 				char := scanner.Text()
 				if opts.Print {
-					fmt.Print(char)
+					if printToStdout {
+						fmt.Print(char)
+					} else {
+						fmt.Fprint(os.Stderr, char)
+					}
 				}
 				if opts.Capture {
 					outSb.WriteString(char)
@@ -166,9 +170,9 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 			}
 		}
 		if c.stdoutScanReader != nil || opts.ScanStdout {
-			go scan(c.stdoutScanReader)
+			go scan(c.stdoutScanReader, true)
 		} else if c.stderrScanReader != nil || opts.ScanStderr {
-			go scan(c.stderrScanReader)
+			go scan(c.stderrScanReader, false)
 		}
 	}
 
