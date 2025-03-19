@@ -47,12 +47,14 @@ type Result struct {
 
 // Command respresents command to launch.
 type Command struct {
-	cmd              *exec.Cmd
-	prevCmd          *exec.Cmd
-	stdoutScanReader *io.PipeReader
-	stderrScanReader *io.PipeReader
-	stdoutPipeWriter *io.PipeWriter
-	stderrPipeWriter *io.PipeWriter
+	cmd     *exec.Cmd
+	prevCmd *exec.Cmd
+}
+
+// ReadCloser implements io.ReadCloser.
+type ReadCloser struct {
+	io.Reader
+	io.Closer
 }
 
 // NewCommand returns new command with context `ctx` and options `opts`.
@@ -69,36 +71,12 @@ func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 
 // PipeStdoutTo pipes Stdout to Stdin of `to`.
 func (c *Command) PipeStdoutTo(to *Command) {
-	if c.stderrScanReader != nil {
-		c.cmd.Stdout = c.cmd.Stderr
-		return
-	}
 
-	stdoutScanReader, stdoutScanWriter := io.Pipe()
-	stdoutPipeReader, stdoutPipeWriter := io.Pipe()
-	c.cmd.Stdout = io.MultiWriter(stdoutScanWriter, stdoutPipeWriter)
-
-	c.stdoutScanReader = stdoutScanReader
-	to.stdoutPipeWriter = stdoutPipeWriter
-	to.cmd.Stdin = stdoutPipeReader
-	to.prevCmd = c.cmd
 }
 
 // PipeStderrTo pipes Stderr to Stdin of `to`.
 func (c *Command) PipeStderrTo(to *Command) {
-	if c.stdoutScanReader != nil {
-		c.cmd.Stderr = c.cmd.Stdout
-		return
-	}
 
-	stderrScanReader, stderrScanWriter := io.Pipe()
-	stderrPipeReader, stderrPipeWriter := io.Pipe()
-	c.cmd.Stderr = io.MultiWriter(stderrScanWriter, stderrPipeWriter)
-
-	c.stderrScanReader = stderrScanReader
-	to.stderrPipeWriter = stderrPipeWriter
-	to.cmd.Stdin = stderrPipeReader
-	to.prevCmd = c.cmd
 }
 
 // Start starts a process with options `opts`.
@@ -109,6 +87,7 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 
 	var outSb strings.Builder
 	scanDoneCh := make(chan struct{}, 1)
+	combinedReader, combinedWriter := io.Pipe()
 
 	if opts.NewConsole || opts.Hide {
 		setCmdAttr(c.cmd, opts.NewConsole, opts.Hide)
@@ -116,39 +95,15 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		c.cmd.Stderr = os.Stderr
 		c.cmd.Stdout = os.Stdout
 	} else { // Can capture output.
-		if c.stdoutScanReader == nil && opts.ScanStdout {
-			stdoutScanReader, stdoutScanWriter := io.Pipe()
-			c.cmd.Stdout = stdoutScanWriter
-			c.stdoutScanReader = stdoutScanReader
-		}
-		if c.stderrScanReader == nil && opts.ScanStderr {
-			stderrScanReader, stderrScanWriter := io.Pipe()
-			c.cmd.Stderr = stderrScanWriter
-			c.stderrScanReader = stderrScanReader
-		}
-		if opts.ScanStdout && opts.ScanStderr {
-			c.cmd.Stderr = c.cmd.Stdout // Redirect Stderr to Stdout. Must appear after creating a pipe.
-		}
-
-		scan := func(reader io.Reader, printToStdout bool) {
+		scan := func(reader io.Reader) {
 			defer func() {
 				scanDoneCh <- struct{}{}
 			}()
-			if opts.Encoding != nil {
-				reader = transform.NewReader(reader, opts.Encoding.NewDecoder())
-			}
 			var lineSb strings.Builder
 			scanner := bufio.NewScanner(reader)
 			scanner.Split(bufio.ScanRunes)
 			for scanner.Scan() {
 				char := scanner.Text()
-				if opts.Print {
-					if printToStdout {
-						fmt.Print(char)
-					} else {
-						fmt.Fprint(os.Stderr, char)
-					}
-				}
 				if opts.Capture {
 					outSb.WriteString(char)
 				}
@@ -166,10 +121,40 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 			}
 		}
 
-		if c.stdoutScanReader != nil {
-			go scan(c.stdoutScanReader, true)
-		} else if c.stderrScanReader != nil {
-			go scan(c.stderrScanReader, false)
+		stdoutReader, err := c.cmd.StdoutPipe()
+		if err != nil {
+			return res, fmt.Errorf("Create stdout pipe: %w", err)
+		}
+		if opts.ScanStdout && opts.Encoding != nil {
+			transformReader := transform.NewReader(stdoutReader, opts.Encoding.NewDecoder())
+			stdoutReader = ReadCloser{transformReader, stdoutReader}
+		}
+		if opts.ScanStdout && opts.Print {
+			tee := io.TeeReader(stdoutReader, os.Stdout)
+			stdoutReader = ReadCloser{tee, stdoutReader}
+		}
+
+		stderrReader, err := c.cmd.StderrPipe()
+		if err != nil {
+			return res, fmt.Errorf("Create stderr pipe: %w", err)
+		}
+		if opts.ScanStderr && opts.Encoding != nil {
+			transformReader := transform.NewReader(stderrReader, opts.Encoding.NewDecoder())
+			stderrReader = ReadCloser{transformReader, stderrReader}
+		}
+		if opts.ScanStderr && opts.Print {
+			tee := io.TeeReader(stderrReader, os.Stderr)
+			stderrReader = ReadCloser{tee, stderrReader}
+		}
+
+		if opts.ScanStdout && opts.ScanStderr {
+			go io.Copy(combinedWriter, stdoutReader)
+			go io.Copy(combinedWriter, stderrReader)
+			go scan(combinedReader)
+		} else if opts.ScanStdout {
+			go scan(stdoutReader)
+		} else if opts.ScanStderr {
+			go scan(stderrReader)
 		}
 	}
 
@@ -184,24 +169,13 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 			return res, fmt.Errorf("Wait for previous process: %w", err)
 		}
 	}
-	if c.stdoutPipeWriter != nil {
-		c.stdoutPipeWriter.Close()
-	}
-	if c.stderrPipeWriter != nil {
-		c.stderrPipeWriter.Close()
-	}
 
 	if opts.Wait {
 		exitErr := &exec.ExitError{}
 		if err = c.cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
 			return res, fmt.Errorf("Wait for process: %w", err)
 		}
-		if c.stdoutScanReader != nil {
-			c.stdoutScanReader.Close()
-		}
-		if c.stderrScanReader != nil {
-			c.stderrScanReader.Close()
-		}
+		combinedReader.Close()
 		if opts.ScanStderr || opts.ScanStdout {
 			<-scanDoneCh
 		}
