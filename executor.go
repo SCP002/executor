@@ -47,8 +47,18 @@ type Result struct {
 
 // Command respresents command to launch.
 type Command struct {
-	cmd     *exec.Cmd
-	prevCmd *exec.Cmd
+	cmd                *exec.Cmd
+	prevCmd            *Command
+	stdoutPipeReader   *io.PipeReader
+	stdoutPipeWriter   *io.PipeWriter
+	stderrPipeReader   *io.PipeReader
+	stderrPipeWriter   *io.PipeWriter
+	combinedPipeReader *io.PipeReader
+	combinedPipeWriter *io.PipeWriter
+	receiveStdout      bool
+	receiveStderr      bool
+	sendStdout         bool
+	sendStderr         bool
 }
 
 // ReadCloser implements io.ReadCloser.
@@ -71,12 +81,16 @@ func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 
 // PipeStdoutTo pipes Stdout to Stdin of `to`.
 func (c *Command) PipeStdoutTo(to *Command) {
-
+	c.sendStdout = true
+	to.receiveStdout = true
+	to.prevCmd = c
 }
 
 // PipeStderrTo pipes Stderr to Stdin of `to`.
 func (c *Command) PipeStderrTo(to *Command) {
-
+	c.sendStderr = true
+	to.receiveStderr = true
+	to.prevCmd = c
 }
 
 // Start starts a process with options `opts`.
@@ -87,6 +101,21 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 
 	var outSb strings.Builder
 	scanDoneCh := make(chan struct{}, 1)
+
+	var stdoutReader io.ReadCloser
+	var stdoutWriter io.WriteCloser
+	stdoutReader, stdoutWriter = io.Pipe()
+	if opts.ScanStdout || c.sendStdout {
+		c.cmd.Stdout = stdoutWriter
+	}
+
+	var stderrReader io.ReadCloser
+	var stderrWriter io.WriteCloser
+	stderrReader, stderrWriter = io.Pipe()
+	if opts.ScanStderr || c.sendStderr {
+		c.cmd.Stderr = stderrWriter
+	}
+
 	combinedReader, combinedWriter := io.Pipe()
 
 	if opts.NewConsole || opts.Hide {
@@ -121,10 +150,6 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 			}
 		}
 
-		stdoutReader, err := c.cmd.StdoutPipe()
-		if err != nil {
-			return res, fmt.Errorf("Create stdout pipe: %w", err)
-		}
 		if opts.ScanStdout && opts.Encoding != nil {
 			transformReader := transform.NewReader(stdoutReader, opts.Encoding.NewDecoder())
 			stdoutReader = ReadCloser{transformReader, stdoutReader}
@@ -134,10 +159,6 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 			stdoutReader = ReadCloser{tee, stdoutReader}
 		}
 
-		stderrReader, err := c.cmd.StderrPipe()
-		if err != nil {
-			return res, fmt.Errorf("Create stderr pipe: %w", err)
-		}
 		if opts.ScanStderr && opts.Encoding != nil {
 			transformReader := transform.NewReader(stderrReader, opts.Encoding.NewDecoder())
 			stderrReader = ReadCloser{transformReader, stderrReader}
@@ -145,6 +166,42 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		if opts.ScanStderr && opts.Print {
 			tee := io.TeeReader(stderrReader, os.Stderr)
 			stderrReader = ReadCloser{tee, stderrReader}
+		}
+
+		if c.sendStdout && c.sendStderr {
+			c.combinedPipeReader, c.combinedPipeWriter = io.Pipe()
+			if opts.ScanStdout {
+				c.cmd.Stdout = io.MultiWriter(c.cmd.Stdout, c.combinedPipeWriter)
+			} else {
+				c.cmd.Stdout = c.combinedPipeWriter
+			}
+			if opts.ScanStderr {
+				c.cmd.Stderr = io.MultiWriter(c.cmd.Stderr, c.combinedPipeWriter)
+			} else {
+				c.cmd.Stderr = c.combinedPipeWriter
+			}
+		} else if c.sendStdout {
+			c.stdoutPipeReader, c.stdoutPipeWriter = io.Pipe()
+			if opts.ScanStdout {
+				c.cmd.Stdout = io.MultiWriter(c.cmd.Stdout, c.stdoutPipeWriter)
+			} else {
+				c.cmd.Stdout = c.stdoutPipeWriter
+			}
+		} else if c.sendStderr {
+			c.stderrPipeReader, c.stderrPipeWriter = io.Pipe()
+			if opts.ScanStderr {
+				c.cmd.Stderr = io.MultiWriter(c.cmd.Stderr, c.stderrPipeWriter)
+			} else {
+				c.cmd.Stderr = c.stderrPipeWriter
+			}
+		}
+
+		if c.receiveStdout && c.receiveStderr {
+			c.cmd.Stdin = c.prevCmd.combinedPipeReader
+		} else if c.receiveStdout {
+			c.cmd.Stdin = c.prevCmd.stdoutPipeReader
+		} else if c.receiveStderr {
+			c.cmd.Stdin = c.prevCmd.stderrPipeReader
 		}
 
 		if opts.ScanStdout && opts.ScanStderr {
@@ -165,15 +222,40 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 	res.StartOk = true
 
 	if c.prevCmd != nil {
-		if err := c.prevCmd.Wait(); err != nil {
+		if err := c.prevCmd.cmd.Wait(); err != nil {
 			return res, fmt.Errorf("Wait for previous process: %w", err)
 		}
+	}
+
+	if c.prevCmd != nil && c.prevCmd.stdoutPipeWriter != nil {
+		c.prevCmd.stdoutPipeWriter.Close()
+	}
+	if c.prevCmd != nil && c.prevCmd.stderrPipeWriter != nil {
+		c.prevCmd.stderrPipeWriter.Close()
+	}
+	if c.prevCmd != nil && c.prevCmd.combinedPipeWriter != nil {
+		c.prevCmd.combinedPipeWriter.Close()
 	}
 
 	if opts.Wait {
 		exitErr := &exec.ExitError{}
 		if err = c.cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
 			return res, fmt.Errorf("Wait for process: %w", err)
+		}
+		if stdoutReader != nil {
+			stdoutReader.Close()
+		}
+		if stderrReader != nil {
+			stderrReader.Close()
+		}
+		if c.stdoutPipeReader != nil {
+			c.stdoutPipeReader.Close()
+		}
+		if c.stderrPipeReader != nil {
+			c.stderrPipeReader.Close()
+		}
+		if c.combinedPipeReader != nil {
+			c.combinedPipeReader.Close()
 		}
 		combinedReader.Close()
 		if opts.ScanStderr || opts.ScanStdout {
