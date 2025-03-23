@@ -47,18 +47,14 @@ type Result struct {
 
 // Command respresents command to launch.
 type Command struct {
-	cmd                *exec.Cmd
-	prevCmd            *Command
-	stdoutPipeReader   *io.PipeReader
-	stdoutPipeWriter   *io.PipeWriter
-	stderrPipeReader   *io.PipeReader
-	stderrPipeWriter   *io.PipeWriter
-	combinedPipeReader *io.PipeReader
-	combinedPipeWriter *io.PipeWriter
-	receiveStdout      bool
-	receiveStderr      bool
-	sendStdout         bool
-	sendStderr         bool
+	cmd        *exec.Cmd
+	prevCmd    *Command
+	pipeReader *io.PipeReader
+	pipeWriter *io.PipeWriter
+	recvStdout bool
+	recvStderr bool
+	sendStdout bool
+	sendStderr bool
 }
 
 // ReadCloser implements io.ReadCloser.
@@ -82,14 +78,14 @@ func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 // PipeStdoutTo pipes Stdout to Stdin of `to`.
 func (c *Command) PipeStdoutTo(to *Command) {
 	c.sendStdout = true
-	to.receiveStdout = true
+	to.recvStdout = true
 	to.prevCmd = c
 }
 
 // PipeStderrTo pipes Stderr to Stdin of `to`.
 func (c *Command) PipeStderrTo(to *Command) {
 	c.sendStderr = true
-	to.receiveStderr = true
+	to.recvStderr = true
 	to.prevCmd = c
 }
 
@@ -169,39 +165,35 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		}
 
 		if c.sendStdout && c.sendStderr {
-			c.combinedPipeReader, c.combinedPipeWriter = io.Pipe()
+			c.pipeReader, c.pipeWriter = io.Pipe()
 			if opts.ScanStdout {
-				c.cmd.Stdout = io.MultiWriter(c.cmd.Stdout, c.combinedPipeWriter)
+				c.cmd.Stdout = io.MultiWriter(c.cmd.Stdout, c.pipeWriter)
 			} else {
-				c.cmd.Stdout = c.combinedPipeWriter
+				c.cmd.Stdout = c.pipeWriter
 			}
 			if opts.ScanStderr {
-				c.cmd.Stderr = io.MultiWriter(c.cmd.Stderr, c.combinedPipeWriter)
+				c.cmd.Stderr = io.MultiWriter(c.cmd.Stderr, c.pipeWriter)
 			} else {
-				c.cmd.Stderr = c.combinedPipeWriter
+				c.cmd.Stderr = c.pipeWriter
 			}
 		} else if c.sendStdout {
-			c.stdoutPipeReader, c.stdoutPipeWriter = io.Pipe()
+			c.pipeReader, c.pipeWriter = io.Pipe()
 			if opts.ScanStdout {
-				c.cmd.Stdout = io.MultiWriter(c.cmd.Stdout, c.stdoutPipeWriter)
+				c.cmd.Stdout = io.MultiWriter(c.cmd.Stdout, c.pipeWriter)
 			} else {
-				c.cmd.Stdout = c.stdoutPipeWriter
+				c.cmd.Stdout = c.pipeWriter
 			}
 		} else if c.sendStderr {
-			c.stderrPipeReader, c.stderrPipeWriter = io.Pipe()
+			c.pipeReader, c.pipeWriter = io.Pipe()
 			if opts.ScanStderr {
-				c.cmd.Stderr = io.MultiWriter(c.cmd.Stderr, c.stderrPipeWriter)
+				c.cmd.Stderr = io.MultiWriter(c.cmd.Stderr, c.pipeWriter)
 			} else {
-				c.cmd.Stderr = c.stderrPipeWriter
+				c.cmd.Stderr = c.pipeWriter
 			}
 		}
 
-		if c.receiveStdout && c.receiveStderr {
-			c.cmd.Stdin = c.prevCmd.combinedPipeReader
-		} else if c.receiveStdout {
-			c.cmd.Stdin = c.prevCmd.stdoutPipeReader
-		} else if c.receiveStderr {
-			c.cmd.Stdin = c.prevCmd.stderrPipeReader
+		if c.recvStdout || c.recvStderr {
+			c.cmd.Stdin = c.prevCmd.pipeReader
 		}
 
 		if opts.ScanStdout && opts.ScanStderr {
@@ -227,14 +219,8 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		}
 	}
 
-	if c.prevCmd != nil && c.prevCmd.stdoutPipeWriter != nil {
-		c.prevCmd.stdoutPipeWriter.Close()
-	}
-	if c.prevCmd != nil && c.prevCmd.stderrPipeWriter != nil {
-		c.prevCmd.stderrPipeWriter.Close()
-	}
-	if c.prevCmd != nil && c.prevCmd.combinedPipeWriter != nil {
-		c.prevCmd.combinedPipeWriter.Close()
+	if c.prevCmd != nil && c.prevCmd.pipeWriter != nil {
+		c.prevCmd.pipeWriter.Close()
 	}
 
 	if opts.Wait {
@@ -248,14 +234,8 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		if stderrReader != nil {
 			stderrReader.Close()
 		}
-		if c.stdoutPipeReader != nil {
-			c.stdoutPipeReader.Close()
-		}
-		if c.stderrPipeReader != nil {
-			c.stderrPipeReader.Close()
-		}
-		if c.combinedPipeReader != nil {
-			c.combinedPipeReader.Close()
+		if c.pipeReader != nil {
+			c.pipeReader.Close()
 		}
 		combinedReader.Close()
 		if opts.ScanStderr || opts.ScanStdout {
