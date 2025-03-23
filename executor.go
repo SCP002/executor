@@ -164,27 +164,17 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 			stderrReader = ReadCloser{tee, stderrReader}
 		}
 
-		if c.sendStdout && c.sendStderr {
+		if c.sendStdout || c.sendStderr {
 			c.pipeReader, c.pipeWriter = io.Pipe()
+		}
+		if c.sendStdout {
 			if opts.ScanStdout {
 				c.cmd.Stdout = io.MultiWriter(c.cmd.Stdout, c.pipeWriter)
 			} else {
 				c.cmd.Stdout = c.pipeWriter
 			}
-			if opts.ScanStderr {
-				c.cmd.Stderr = io.MultiWriter(c.cmd.Stderr, c.pipeWriter)
-			} else {
-				c.cmd.Stderr = c.pipeWriter
-			}
-		} else if c.sendStdout {
-			c.pipeReader, c.pipeWriter = io.Pipe()
-			if opts.ScanStdout {
-				c.cmd.Stdout = io.MultiWriter(c.cmd.Stdout, c.pipeWriter)
-			} else {
-				c.cmd.Stdout = c.pipeWriter
-			}
-		} else if c.sendStderr {
-			c.pipeReader, c.pipeWriter = io.Pipe()
+		}
+		if c.sendStderr {
 			if opts.ScanStderr {
 				c.cmd.Stderr = io.MultiWriter(c.cmd.Stderr, c.pipeWriter)
 			} else {
