@@ -136,7 +136,7 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 					opts.OnChar(char, c.cmd.Process)
 				}
 				if opts.OnLine != nil {
-					if char == "\n" || char == "\r" {
+					if char == "\n" {
 						opts.OnLine(lineSb.String(), c.cmd.Process)
 						lineSb.Reset()
 					} else {
