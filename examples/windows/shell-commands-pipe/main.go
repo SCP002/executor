@@ -24,8 +24,7 @@ func main() {
 		Args:    []string{"/C", "findstr", "Program"},
 	})
 
-	dirCmd.PipeStdoutTo(findStrCmd)
-	dirCmd.PipeStderrTo(findStrCmd)
+	dirCmd.PipeAllTo(findStrCmd)
 
 	_, err := dirCmd.Start(executor.StartOptions{
 		Encoding: charmap.CodePage866,

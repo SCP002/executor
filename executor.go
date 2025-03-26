@@ -47,7 +47,7 @@ type Result struct {
 
 // Command respresents command to launch.
 type Command struct {
-	cmd        *exec.Cmd
+	Cmd        *exec.Cmd
 	prevCmd    *Command
 	pipeReader *io.PipeReader
 	pipeWriter *io.PipeWriter
@@ -72,7 +72,7 @@ func NewCommand(ctx context.Context, opts CmdOptions) *Command {
 	sigIntCh := make(chan os.Signal, 1)
 	signal.Notify(sigIntCh, os.Interrupt, syscall.SIGTERM) // Fix broken console on Ctrl + C.
 
-	return &Command{cmd: cmd}
+	return &Command{Cmd: cmd}
 }
 
 // PipeStdoutTo pipes Stdout to Stdin of `to`.
@@ -89,6 +89,12 @@ func (c *Command) PipeStderrTo(to *Command) {
 	to.prevCmd = c
 }
 
+// PipeStderrTo pipes Stdout and Stderr to Stdin of `to`.
+func (c *Command) PipeAllTo(to *Command) {
+	c.PipeStdoutTo(to)
+	c.PipeStderrTo(to)
+}
+
 // Start starts a process with options `opts`.
 func (c *Command) Start(opts StartOptions) (Result, error) {
 	res := Result{
@@ -102,23 +108,23 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 	var stdoutWriter io.WriteCloser
 	stdoutReader, stdoutWriter = io.Pipe()
 	if opts.ScanStdout || c.sendStdout {
-		c.cmd.Stdout = stdoutWriter
+		c.Cmd.Stdout = stdoutWriter
 	}
 
 	var stderrReader io.ReadCloser
 	var stderrWriter io.WriteCloser
 	stderrReader, stderrWriter = io.Pipe()
 	if opts.ScanStderr || c.sendStderr {
-		c.cmd.Stderr = stderrWriter
+		c.Cmd.Stderr = stderrWriter
 	}
 
 	combinedReader, combinedWriter := io.Pipe()
 
 	if opts.NewConsole || opts.Hide {
-		setCmdAttr(c.cmd, opts.NewConsole, opts.Hide)
+		setCmdAttr(c.Cmd, opts.NewConsole, opts.Hide)
 
-		c.cmd.Stderr = os.Stderr
-		c.cmd.Stdout = os.Stdout
+		c.Cmd.Stderr = os.Stderr
+		c.Cmd.Stdout = os.Stdout
 	} else { // Can capture output.
 		scan := func(reader io.Reader) {
 			defer func() {
@@ -133,11 +139,11 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 					outSb.WriteString(char)
 				}
 				if opts.OnChar != nil {
-					opts.OnChar(char, c.cmd.Process)
+					opts.OnChar(char, c.Cmd.Process)
 				}
 				if opts.OnLine != nil {
 					if char == "\n" {
-						opts.OnLine(lineSb.String(), c.cmd.Process)
+						opts.OnLine(lineSb.String(), c.Cmd.Process)
 						lineSb.Reset()
 					} else {
 						lineSb.WriteString(char)
@@ -169,21 +175,21 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		}
 		if c.sendStdout {
 			if opts.ScanStdout {
-				c.cmd.Stdout = io.MultiWriter(c.cmd.Stdout, c.pipeWriter)
+				c.Cmd.Stdout = io.MultiWriter(c.Cmd.Stdout, c.pipeWriter)
 			} else {
-				c.cmd.Stdout = c.pipeWriter
+				c.Cmd.Stdout = c.pipeWriter
 			}
 		}
 		if c.sendStderr {
 			if opts.ScanStderr {
-				c.cmd.Stderr = io.MultiWriter(c.cmd.Stderr, c.pipeWriter)
+				c.Cmd.Stderr = io.MultiWriter(c.Cmd.Stderr, c.pipeWriter)
 			} else {
-				c.cmd.Stderr = c.pipeWriter
+				c.Cmd.Stderr = c.pipeWriter
 			}
 		}
 
 		if c.recvStdout || c.recvStderr {
-			c.cmd.Stdin = c.prevCmd.pipeReader
+			c.Cmd.Stdin = c.prevCmd.pipeReader
 		}
 
 		if opts.ScanStdout && opts.ScanStderr {
@@ -197,14 +203,14 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		}
 	}
 
-	err := c.cmd.Start()
+	err := c.Cmd.Start()
 	if err != nil {
 		return res, fmt.Errorf("Start process: %w", err)
 	}
 	res.StartOk = true
 
 	if c.prevCmd != nil {
-		if err := c.prevCmd.cmd.Wait(); err != nil {
+		if err := c.prevCmd.Cmd.Wait(); err != nil {
 			return res, fmt.Errorf("Wait for previous process: %w", err)
 		}
 	}
@@ -215,7 +221,7 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 
 	if opts.Wait {
 		exitErr := &exec.ExitError{}
-		if err = c.cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
+		if err = c.Cmd.Wait(); err != nil && !errors.As(err, &exitErr) {
 			return res, fmt.Errorf("Wait for process: %w", err)
 		}
 		if stdoutReader != nil {
@@ -233,9 +239,9 @@ func (c *Command) Start(opts StartOptions) (Result, error) {
 		}
 	}
 
-	if c.cmd.ProcessState != nil {
-		res.DoneOk = c.cmd.ProcessState.Success()
-		res.ExitCode = c.cmd.ProcessState.ExitCode()
+	if c.Cmd.ProcessState != nil {
+		res.DoneOk = c.Cmd.ProcessState.Success()
+		res.ExitCode = c.Cmd.ProcessState.ExitCode()
 	}
 	res.Output = outSb.String()
 
