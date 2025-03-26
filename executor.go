@@ -95,6 +95,11 @@ func (c *Command) PipeAllTo(to *Command) {
 	c.PipeStderrTo(to)
 }
 
+// SetStdin sets command Stdin to `r`.
+func (c *Command) SetStdin(r io.Reader) {
+	c.Cmd.Stdin = r
+}
+
 // Start starts a process with options `opts`.
 func (c *Command) Start(opts StartOptions) (Result, error) {
 	res := Result{
