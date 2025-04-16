@@ -13,12 +13,12 @@ import (
 
 func main() {
 	ctx := context.Background()
-	topCmd := executor.NewCommand(ctx, executor.CmdOptions{
+	psCmd := executor.NewCommand(ctx, executor.CmdOptions{
 		Command: "bash",
 		Args:    []string{"-c", "ps", "axu"},
 	})
 
-	res, err := topCmd.Start(executor.StartOptions{
+	res, err := psCmd.Start(executor.StartOptions{
 		ScanStdout: true,
 		ScanStderr: true,
 		Wait:       true,
